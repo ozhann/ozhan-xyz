@@ -21,19 +21,19 @@ export const site = {
       name: "The Event Verse",
       role: "Senior Software Engineer",
       industry: "Live events",
-      href: null as string | null,
+      href: "https://theeventverse.com" as string | null,
     },
     {
       name: "Riverty",
       role: "Software Engineer",
       industry: "FinTech",
-      href: null as string | null,
+      href: "https://www.riverty.com" as string | null,
     },
     {
       name: "Petsdeli",
       role: "Frontend Engineer",
       industry: "eCommerce",
-      href: null as string | null,
+      href: "https://www.petsdeli.de" as string | null,
     },
   ],
 } as const;

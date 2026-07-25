@@ -178,9 +178,9 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 8%;
-  transform: scale(1.48);
-  transform-origin: center 18%;
+  object-position: center 5%;
+  transform: scale(1.62);
+  transform-origin: center 12%;
 }
 
 .location {
@@ -320,13 +320,27 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   justify-content: space-between;
   gap: 0.75rem 1rem;
   padding: 0.7rem 0.1rem;
-  transition: background 160ms ease, padding-left 160ms ease;
+  transition: background 160ms ease, padding-left 160ms ease, color 160ms ease;
+}
+
+.project-list a .project-name {
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.18em;
+  transition: text-decoration-color 160ms ease, color 160ms ease;
 }
 
 .project-list a:hover,
 .project-list a:focus-visible {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   padding-left: 0.35rem;
+  outline: none;
+}
+
+.project-list a:hover .project-name,
+.project-list a:focus-visible .project-name {
+  color: var(--accent-soft);
+  text-decoration-color: color-mix(in srgb, var(--accent-soft) 55%, transparent);
 }
 
 .project-name {
@@ -409,49 +423,15 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   aspect-ratio: 1 / 1;
   width: 100%;
   min-width: 0;
-  border-radius: 0;
+  border-radius: 2px;
   background-color: var(--heat-0);
-  background-repeat: repeat;
-  image-rendering: pixelated;
   animation: cell-in 0.45s ease both;
 }
 
-/* Ordered dither fills — denser patterns for higher contribution levels */
-.heat-cell[data-level="1"] {
-  background-color: var(--heat-0);
-  background-image:
-    linear-gradient(45deg, var(--heat-2) 25%, transparent 25%),
-    linear-gradient(-45deg, var(--heat-2) 25%, transparent 25%);
-  background-size: 4px 4px;
-  background-position: 0 0, 2px 0;
-}
-
-.heat-cell[data-level="2"] {
-  background-color: var(--heat-0);
-  background-image:
-    linear-gradient(45deg, var(--heat-3) 25%, transparent 25%),
-    linear-gradient(-45deg, var(--heat-3) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, var(--heat-3) 75%),
-    linear-gradient(-45deg, transparent 75%, var(--heat-3) 75%);
-  background-size: 4px 4px;
-  background-position: 0 0, 0 2px, 2px -2px, -2px 0;
-}
-
-.heat-cell[data-level="3"] {
-  background-color: var(--heat-3);
-  background-image:
-    linear-gradient(90deg, color-mix(in srgb, var(--heat-0) 35%, transparent) 1px, transparent 1px),
-    linear-gradient(color-mix(in srgb, var(--heat-0) 35%, transparent) 1px, transparent 1px);
-  background-size: 3px 3px;
-}
-
-.heat-cell[data-level="4"] {
-  background-color: var(--heat-4);
-  background-image:
-    linear-gradient(90deg, color-mix(in srgb, var(--ink) 12%, transparent) 1px, transparent 1px),
-    linear-gradient(color-mix(in srgb, var(--ink) 12%, transparent) 1px, transparent 1px);
-  background-size: 2px 2px;
-}
+.heat-cell[data-level="1"] { background-color: var(--heat-1); }
+.heat-cell[data-level="2"] { background-color: var(--heat-2); }
+.heat-cell[data-level="3"] { background-color: var(--heat-3); }
+.heat-cell[data-level="4"] { background-color: var(--heat-4); }
 
 .heatmap-meta {
   margin: 0.45rem 0 0;
