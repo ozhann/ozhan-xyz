@@ -140,24 +140,34 @@ export async function fetchContributionCalendar(
   }
 }
 
-export function monthLabels(weeks: ContributionWeek[]): { label: string; index: number }[] {
-  const labels: { label: string; index: number }[] = [];
+export function monthLabels(
+  weeks: ContributionWeek[],
+  minGap = 3,
+): { label: string; index: number }[] {
+  const starts: { label: string; index: number }[] = [];
   let lastMonth = -1;
 
   weeks.forEach((week, index) => {
     const first = week.days[0];
     if (!first) return;
-    const month = new Date(`${first.date}T00:00:00`).getMonth();
-    if (month !== lastMonth) {
-      labels.push({
-        label: new Date(`${first.date}T00:00:00`).toLocaleString("en", {
-          month: "short",
-        }),
-        index,
-      });
-      lastMonth = month;
-    }
+    const date = new Date(`${first.date}T00:00:00`);
+    const month = date.getMonth();
+    if (month === lastMonth) return;
+    lastMonth = month;
+    starts.push({
+      label: date.toLocaleString("en", { month: "short" }),
+      index,
+    });
   });
+
+  // Keep labels readable: drop a month if it would sit too close to the previous one.
+  const labels: { label: string; index: number }[] = [];
+  for (const start of starts) {
+    const previous = labels[labels.length - 1];
+    if (!previous || start.index - previous.index >= minGap) {
+      labels.push(start);
+    }
+  }
 
   return labels;
 }

@@ -243,7 +243,7 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.55rem 1rem;
+  gap: 0.35rem 0.55rem;
   margin: 1.15rem 0 0.35rem;
   padding: 0.85rem 0;
   list-style: none;
@@ -254,29 +254,40 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
 }
 
 .socials a {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 999px;
   color: var(--ink);
-  position: relative;
+  transition: color 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
-.socials a::after {
-  content: "";
+.socials a:hover,
+.socials a:focus-visible {
+  color: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.socials svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  display: block;
+}
+
+.social-label {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -0.15rem;
+  width: 1px;
   height: 1px;
-  background: var(--accent);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 180ms ease;
-}
-
-.socials a:hover::after,
-.socials a:focus-visible::after {
-  transform: scaleX(1);
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .section {
@@ -365,49 +376,30 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
 
 .heatmap {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.45rem;
   width: 100%;
 }
 
 .heatmap-months {
-  display: grid;
-  grid-template-columns: repeat(var(--weeks), minmax(0, 1fr));
-  gap: 3px;
-  margin-left: 0.85rem;
+  position: relative;
+  height: 1rem;
   font-family: var(--font-mono);
-  font-size: 0.52rem;
+  font-size: 0.68rem;
+  line-height: 1;
   color: var(--muted);
-  height: 0.75rem;
 }
 
 .heatmap-months span {
-  overflow: hidden;
+  position: absolute;
+  top: 0;
+  transform: translateX(0);
   white-space: nowrap;
-  text-overflow: clip;
+  overflow: visible;
+  letter-spacing: 0.02em;
 }
 
-.heatmap-body {
-  display: grid;
-  grid-template-columns: 0.85rem minmax(0, 1fr);
-  gap: 0.3rem;
-  align-items: start;
-}
-
-.heatmap-days {
-  display: grid;
-  grid-template-rows: repeat(7, auto);
-  gap: 3px;
-  font-family: var(--font-mono);
-  font-size: 0.5rem;
-  color: var(--muted);
-  align-items: center;
-}
-
-.heatmap-days span {
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  line-height: 1;
+.heatmap-months span.is-end {
+  transform: translateX(-100%);
 }
 
 .heatmap-grid {
@@ -439,6 +431,17 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   font-size: 0.68rem;
   color: var(--muted);
   text-align: left;
+}
+
+@media (max-width: 560px) {
+  .heatmap-months {
+    height: 0.9rem;
+    font-size: 0.62rem;
+  }
+
+  .heatmap-grid {
+    gap: 2px;
+  }
 }
 
 .footer {

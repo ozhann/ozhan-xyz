@@ -2,6 +2,7 @@
 import { site } from "../content/site";
 import { fetchContributionCalendar } from "../lib/github";
 import Heatmap from "../components/Heatmap.astro";
+import SocialIcon from "../components/SocialIcon.astro";
 import "../styles/global.css";
 
 const calendar = await fetchContributionCalendar(site.githubUsername);
@@ -17,6 +18,8 @@ const year = new Date().getFullYear();
     <meta name="color-scheme" content="light dark" />
     <link rel="canonical" href={site.url} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -92,8 +95,15 @@ const year = new Date().getFullYear();
           {
             site.socials.map((social) => (
               <li>
-                <a href={social.href} target={social.href.startsWith("mailto:") ? undefined : "_blank"} rel={social.href.startsWith("mailto:") ? undefined : "noopener noreferrer"}>
-                  [{social.label}]
+                <a
+                  href={social.href}
+                  target={social.href.startsWith("mailto:") ? undefined : "_blank"}
+                  rel={social.href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
+                  aria-label={social.label}
+                  title={social.label}
+                >
+                  <SocialIcon label={social.label} />
+                  <span class="social-label">{social.label}</span>
                 </a>
               </li>
             ))
