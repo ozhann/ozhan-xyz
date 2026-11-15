@@ -38,13 +38,16 @@ const markers = [
   ...current.map((place) => ({ location: place.coords, current: true })),
 ];
 
+const tilts = [-6, 4.5, -3, 7, -5, 3];
 const photos = countries
   .filter((country) => country.photo)
-  .map((country) => ({
+  .map((country, index) => ({
     code: country.code,
-    src: country.photo ?? "",
+    full: country.photo ?? "",
+    thumb: (country.photo ?? "").replace("/travel/", "/travel/thumb/"),
     caption: country.caption ?? country.name,
     coords: country.coords,
+    tilt: tilts[index % tilts.length],
   }));
 
 const home = current[0]?.coords ?? [0, 0];
@@ -60,16 +63,27 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
       aria-label={`Globe marking ${countries.length} ${countryLabel} visited`}
       role="img"
     ></canvas>
-    {
-      photos.length > 0 && (
-        <figure class="polaroid" data-photos={JSON.stringify(photos)} aria-live="polite">
-          <div class="polaroid-card">
-            <img alt="" width="240" height="300" decoding="async" />
-            <figcaption></figcaption>
-          </div>
-        </figure>
-      )
-    }
+    <div class="polaroids">
+      {
+        photos.map((photo) => (
+          <button
+            type="button"
+            class="polaroid"
+            data-code={photo.code}
+            data-coords={JSON.stringify(photo.coords)}
+            data-full={photo.full}
+            data-caption={photo.caption}
+            style={`--tilt: ${photo.tilt}deg`}
+            aria-label={`See the photo of ${photo.caption}`}
+          >
+            <span class="polaroid-card">
+              <img src={photo.thumb} alt="" width="56" height="56" loading="lazy" decoding="async" />
+              <span class="polaroid-caption">{photo.caption}</span>
+            </span>
+          </button>
+        ))
+      }
+    </div>
   </div>
 
   <div class="travel-info">
@@ -112,6 +126,17 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
       ))
     }
   </ul>
+
+  <dialog class="photo-viewer" aria-label="Travel photo">
+    <figure class="photo-print">
+      <div class="photo-frame">
+        <img class="photo-preview" alt="" width="640" height="800" />
+        <img class="photo-full" alt="" width="640" height="800" decoding="async" />
+      </div>
+      <figcaption></figcaption>
+    </figure>
+    <button type="button" class="photo-close" aria-label="Close photo">×</button>
+  </dialog>
 </div>
 
 <script>
@@ -121,23 +146,13 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
   type MarkerData = { location: LatLng; current: boolean };
   type Rgb = [number, number, number];
   type View = { phi: number; theta: number };
-  type Photo = { code: string; src: string; caption: string; coords: LatLng };
 
   const RADIUS = 0.8;
   const ELEVATION = 0.01;
-  const POLAROID_GAP = 14;
-  const POLAROID_INTERVAL = 4200;
-  const POLAROID_FLOOR = 0.72;
-  const TILTS = [-5, 4, -3, 6, -4, 3];
-
-  const shuffle = <T,>(items: readonly T[]) => {
-    const copy = [...items];
-    for (let index = copy.length - 1; index > 0; index -= 1) {
-      const swap = Math.floor(Math.random() * (index + 1));
-      [copy[index], copy[swap]] = [copy[swap]!, copy[index]!];
-    }
-    return copy;
-  };
+  const PIN_ROTATE_INTERVAL = 4500;
+  const PIN_REST = 9000;
+  const PIN_FLOOR = 0.78;
+  const SWAY_SPEED = 0.0011;
 
   const canvas = document.querySelector<HTMLCanvasElement>(".globe-canvas");
   const stage = document.querySelector<HTMLElement>(".travel-stage");
@@ -202,20 +217,20 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const markerVectors = markerData.map((marker) => toVector(marker.location));
 
-    const polaroid = stage.querySelector<HTMLElement>(".polaroid");
-    const photoImage = polaroid?.querySelector("img");
-    const photoCaption = polaroid?.querySelector("figcaption");
-    const photos = (JSON.parse(polaroid?.dataset.photos ?? "[]") as Photo[]).map((photo) => ({
-      ...photo,
-      vector: toVector(photo.coords),
+    const pins = [...stage.querySelectorAll<HTMLElement>(".polaroid")].map((element) => ({
+      element,
+      code: element.dataset.code ?? "",
+      vector: toVector(JSON.parse(element.dataset.coords ?? "[0,0]") as LatLng),
+      shown: false,
+      restUntil: 0,
+      x: 0,
+      y: 0,
     }));
-    type Shot = (typeof photos)[number];
+    type Pin = (typeof pins)[number];
 
-    let active: Shot | null = null;
-    let pinned = false;
-    let queue: Shot[] = [];
-    let nextSwap = performance.now() + 1200;
-    let tiltIndex = 0;
+    let focused: string | null = null;
+    let hovering = false;
+    let nextRotate = performance.now() + PIN_ROTATE_INTERVAL;
 
     let palette = readPalette();
     let view: View = { ...home };
@@ -253,69 +268,88 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
       markerElevation: ELEVATION,
     });
 
-    const facing = (photo: Shot) => project(photo.vector, view).depth > 0.45;
+    const overlaps = (a: Pin, b: Pin, width: number, height: number) =>
+      Math.abs(a.x - b.x) < width * 0.74 && Math.abs(a.y - b.y) < height * 0.74;
 
-    const placePolaroid = () => {
-      if (!polaroid || !active) return;
+    const restCrowdedPin = (now: number, candidates: Pin[], width: number, height: number) => {
+      if (now < nextRotate || hovering) return;
+      nextRotate = now + PIN_ROTATE_INTERVAL;
+      const crowded = candidates.filter(
+        (pin) =>
+          pin.shown &&
+          pin.code !== focused &&
+          candidates.some((other) => !other.shown && overlaps(pin, other, width, height)),
+      );
+      const resting = crowded[Math.floor(Math.random() * crowded.length)];
+      if (resting) resting.restUntil = now + PIN_REST;
+    };
+
+    const placePins = (now: number) => {
+      const first = pins[0];
+      if (!first) return;
       const stageBox = stage.getBoundingClientRect();
       const canvasBox = canvas.getBoundingClientRect();
-      const point = project(active.vector, view);
-      const x = canvasBox.left - stageBox.left + point.u * canvasBox.width;
-      const y = canvasBox.top - stageBox.top + point.v * canvasBox.height;
-      const width = polaroid.offsetWidth;
-      const height = polaroid.offsetHeight;
-      const onRight = x + POLAROID_GAP + width <= stageBox.width - 8;
-      const left = onRight ? x + POLAROID_GAP : Math.max(8, x - POLAROID_GAP - width);
-      const top = Math.max(10, Math.min(stageBox.height * POLAROID_FLOOR - height, y - height * 0.6));
-      polaroid.style.transform = `translate(${left}px, ${top}px)`;
-      polaroid.dataset.side = onRight ? "right" : "left";
-    };
-
-    const reveal = (photo: Shot | null) => {
-      if (!polaroid || !photoImage || !photoCaption || photo === active) return;
-      const wasShown = polaroid.classList.contains("is-shown");
-      active = photo;
-      polaroid.classList.remove("is-shown");
-      if (!photo) return;
-      const preload = new Image();
-      preload.src = photo.src;
-      const loaded = preload.decode().catch(() => undefined);
-      const faded = new Promise((resolve) => setTimeout(resolve, wasShown ? 260 : 0));
-      void Promise.all([loaded, faded]).then(() => {
-        if (active !== photo) return;
-        photoImage.src = photo.src;
-        photoCaption.textContent = photo.caption;
-        polaroid.style.setProperty("--tilt", `${TILTS[tiltIndex++ % TILTS.length]}deg`);
-        placePolaroid();
-        polaroid.classList.add("is-shown");
+      const width = first.element.offsetWidth;
+      const height = first.element.offsetHeight;
+      const candidates = pins.filter((pin) => {
+        const point = project(pin.vector, view);
+        pin.x = canvasBox.left - stageBox.left + point.u * canvasBox.width;
+        pin.y = canvasBox.top - stageBox.top + point.v * canvasBox.height;
+        return (
+          point.depth > 0.3 &&
+          pin.y > height * 0.7 &&
+          pin.y < stageBox.height * PIN_FLOOR &&
+          pin.x > width / 2 &&
+          pin.x < stageBox.width - width / 2
+        );
       });
-    };
-
-    const pickNext = () => {
-      const take = () => {
-        const index = queue.findIndex((photo) => photo !== active && facing(photo));
-        return index === -1 ? null : (queue.splice(index, 1)[0] ?? null);
-      };
-      const found = take();
-      if (found) return found;
-      queue = shuffle(photos);
-      return take();
-    };
-
-    const cycle = (now: number) => {
-      if (pinned || reduceMotion || photos.length === 0) return;
-      if (active && !facing(active)) {
-        reveal(null);
-        nextSwap = now + 700;
-        return;
+      restCrowdedPin(now, candidates, width, height);
+      const rank = (pin: Pin) =>
+        pin.code === focused ? 0 : pin.restUntil > now ? 3 : pin.shown ? 1 : 2;
+      const placed: Pin[] = [];
+      for (const pin of [...candidates].sort((a, b) => rank(a) - rank(b))) {
+        if (placed.every((other) => !overlaps(pin, other, width, height))) placed.push(pin);
       }
-      if (now < nextSwap) return;
-      nextSwap = now + POLAROID_INTERVAL;
-      reveal(pickNext());
+      for (const pin of pins) {
+        pin.shown = placed.includes(pin);
+        pin.element.style.transform = `translate(${pin.x}px, ${pin.y}px)`;
+        pin.element.classList.toggle("is-shown", pin.shown);
+        pin.element.classList.toggle("is-focus", pin.shown && pin.code === focused);
+        pin.element.tabIndex = pin.shown ? 0 : -1;
+      }
     };
+
+    const viewer = document.querySelector<HTMLDialogElement>(".photo-viewer");
+    const viewerPreview = viewer?.querySelector<HTMLImageElement>(".photo-preview");
+    const viewerFull = viewer?.querySelector<HTMLImageElement>(".photo-full");
+    const viewerCaption = viewer?.querySelector("figcaption");
+
+    const openPhoto = (pin: Pin) => {
+      if (!viewer || !viewerPreview || !viewerFull || !viewerCaption) return;
+      const full = pin.element.dataset.full ?? "";
+      viewerPreview.src = pin.element.querySelector("img")?.src ?? "";
+      viewerCaption.textContent = pin.element.dataset.caption ?? "";
+      viewerFull.classList.remove("is-loaded");
+      viewerFull.onload = () => viewerFull.classList.add("is-loaded");
+      viewerFull.src = full;
+      viewerFull.alt = `Photo from ${pin.element.dataset.caption ?? ""}`;
+      viewer.showModal();
+    };
+
+    viewer?.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target === viewer || (target instanceof HTMLElement && target.closest(".photo-close"))) {
+        viewer.close();
+      }
+    });
+
+    for (const pin of pins) {
+      pin.element.addEventListener("click", () => openPhoto(pin));
+    }
 
     const step = () => {
       if (dragStart || reduceMotion) return;
+      if (hovering && !target) return;
       if (target) {
         const phiTurn = shortestTurn(view.phi, target.phi);
         const thetaTurn = target.theta - view.theta;
@@ -325,7 +359,7 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
         return;
       }
       sway += 0.005;
-      view.phi += Math.cos(sway) * 0.0035;
+      view.phi += Math.cos(sway) * SWAY_SPEED;
     };
 
     const tick = () => {
@@ -333,8 +367,7 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
         step();
         pulse += 0.06;
         globe.update({ phi: view.phi, theta: view.theta, markers: buildMarkers() });
-        cycle(performance.now());
-        placePolaroid();
+        placePins(performance.now());
       }
       requestAnimationFrame(tick);
     };
@@ -355,6 +388,13 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
       );
     });
 
+    stage.addEventListener("pointerenter", (event) => {
+      hovering = event.pointerType === "mouse";
+    });
+    stage.addEventListener("pointerleave", () => {
+      hovering = false;
+    });
+
     const endDrag = () => {
       dragStart = null;
       sway = 0;
@@ -367,8 +407,7 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
       const flag = event.currentTarget;
       if (!(flag instanceof HTMLElement)) return;
       target = viewFor(JSON.parse(flag.dataset.coords ?? "[0,0]") as LatLng);
-      pinned = true;
-      reveal(photos.find((photo) => photo.code === flag.dataset.code) ?? null);
+      focused = flag.dataset.code ?? null;
       if (reduceMotion) {
         view = { ...target };
         target = null;
@@ -378,8 +417,7 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
     const returnHome = () => {
       target = { ...home };
       sway = 0;
-      pinned = false;
-      nextSwap = performance.now() + POLAROID_INTERVAL / 2;
+      focused = null;
       if (reduceMotion) {
         view = { ...home };
         target = null;
@@ -389,7 +427,11 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
     for (const flag of document.querySelectorAll<HTMLElement>(".travel-flag")) {
       flag.addEventListener("pointerenter", focusFlag);
       flag.addEventListener("focus", focusFlag);
-      flag.addEventListener("click", focusFlag);
+      flag.addEventListener("click", (event) => {
+        focusFlag(event);
+        const pin = pins.find((candidate) => candidate.code === flag.dataset.code);
+        if (pin) openPhoto(pin);
+      });
       flag.addEventListener("pointerleave", returnHome);
       flag.addEventListener("blur", returnHome);
     }
