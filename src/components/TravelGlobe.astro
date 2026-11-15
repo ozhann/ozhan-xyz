@@ -40,11 +40,11 @@ const markers = [
 
 const photos = countries
   .filter((country) => country.photo)
-  .map((country, index) => ({
+  .map((country) => ({
+    code: country.code,
     src: country.photo ?? "",
     caption: country.caption ?? country.name,
     coords: country.coords,
-    tilt: [-6, 4, -3, 7, -5, 3][index % 6],
   }));
 
 const home = current[0]?.coords ?? [0, 0];
@@ -60,22 +60,16 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
       aria-label={`Globe marking ${countries.length} ${countryLabel} visited`}
       role="img"
     ></canvas>
-    <div class="polaroids" aria-hidden="true">
-      {
-        photos.map((photo) => (
-          <figure
-            class="polaroid"
-            data-coords={JSON.stringify(photo.coords)}
-            style={`--tilt: ${photo.tilt}deg`}
-          >
-            <div class="polaroid-card">
-              <img src={photo.src} alt="" width="72" height="72" loading="lazy" />
-              <figcaption>{photo.caption}</figcaption>
-            </div>
-          </figure>
-        ))
-      }
-    </div>
+    {
+      photos.length > 0 && (
+        <figure class="polaroid" data-photos={JSON.stringify(photos)} aria-live="polite">
+          <div class="polaroid-card">
+            <img alt="" width="240" height="300" decoding="async" />
+            <figcaption></figcaption>
+          </div>
+        </figure>
+      )
+    }
   </div>
 
   <div class="travel-info">
@@ -108,6 +102,7 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
             type="button"
             class="travel-flag"
             data-coords={JSON.stringify(flag.coords)}
+            data-code={flag.code}
             title={flag.name}
             aria-label={`Show ${flag.name} on the globe`}
           >
@@ -126,9 +121,23 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
   type MarkerData = { location: LatLng; current: boolean };
   type Rgb = [number, number, number];
   type View = { phi: number; theta: number };
+  type Photo = { code: string; src: string; caption: string; coords: LatLng };
 
   const RADIUS = 0.8;
   const ELEVATION = 0.01;
+  const POLAROID_GAP = 14;
+  const POLAROID_INTERVAL = 4200;
+  const POLAROID_FLOOR = 0.72;
+  const TILTS = [-5, 4, -3, 6, -4, 3];
+
+  const shuffle = <T,>(items: readonly T[]) => {
+    const copy = [...items];
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(Math.random() * (index + 1));
+      [copy[index], copy[swap]] = [copy[swap]!, copy[index]!];
+    }
+    return copy;
+  };
 
   const canvas = document.querySelector<HTMLCanvasElement>(".globe-canvas");
   const stage = document.querySelector<HTMLElement>(".travel-stage");
@@ -193,10 +202,20 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const markerVectors = markerData.map((marker) => toVector(marker.location));
 
-    const polaroids = [...stage.querySelectorAll<HTMLElement>(".polaroid")].map((element) => ({
-      element,
-      vector: toVector(JSON.parse(element.dataset.coords ?? "[0,0]") as LatLng),
+    const polaroid = stage.querySelector<HTMLElement>(".polaroid");
+    const photoImage = polaroid?.querySelector("img");
+    const photoCaption = polaroid?.querySelector("figcaption");
+    const photos = (JSON.parse(polaroid?.dataset.photos ?? "[]") as Photo[]).map((photo) => ({
+      ...photo,
+      vector: toVector(photo.coords),
     }));
+    type Shot = (typeof photos)[number];
+
+    let active: Shot | null = null;
+    let pinned = false;
+    let queue: Shot[] = [];
+    let nextSwap = performance.now() + 1200;
+    let tiltIndex = 0;
 
     let palette = readPalette();
     let view: View = { ...home };
@@ -234,16 +253,65 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
       markerElevation: ELEVATION,
     });
 
-    const placePolaroids = () => {
+    const facing = (photo: Shot) => project(photo.vector, view).depth > 0.45;
+
+    const placePolaroid = () => {
+      if (!polaroid || !active) return;
       const stageBox = stage.getBoundingClientRect();
       const canvasBox = canvas.getBoundingClientRect();
-      for (const { element, vector } of polaroids) {
-        const point = project(vector, view);
-        const left = canvasBox.left - stageBox.left + point.u * canvasBox.width;
-        const top = canvasBox.top - stageBox.top + point.v * canvasBox.height;
-        element.style.transform = `translate(${left}px, ${top}px)`;
-        element.classList.toggle("is-shown", point.depth > 0.35 && top > 40);
+      const point = project(active.vector, view);
+      const x = canvasBox.left - stageBox.left + point.u * canvasBox.width;
+      const y = canvasBox.top - stageBox.top + point.v * canvasBox.height;
+      const width = polaroid.offsetWidth;
+      const height = polaroid.offsetHeight;
+      const onRight = x + POLAROID_GAP + width <= stageBox.width - 8;
+      const left = onRight ? x + POLAROID_GAP : Math.max(8, x - POLAROID_GAP - width);
+      const top = Math.max(10, Math.min(stageBox.height * POLAROID_FLOOR - height, y - height * 0.6));
+      polaroid.style.transform = `translate(${left}px, ${top}px)`;
+      polaroid.dataset.side = onRight ? "right" : "left";
+    };
+
+    const reveal = (photo: Shot | null) => {
+      if (!polaroid || !photoImage || !photoCaption || photo === active) return;
+      const wasShown = polaroid.classList.contains("is-shown");
+      active = photo;
+      polaroid.classList.remove("is-shown");
+      if (!photo) return;
+      const preload = new Image();
+      preload.src = photo.src;
+      const loaded = preload.decode().catch(() => undefined);
+      const faded = new Promise((resolve) => setTimeout(resolve, wasShown ? 260 : 0));
+      void Promise.all([loaded, faded]).then(() => {
+        if (active !== photo) return;
+        photoImage.src = photo.src;
+        photoCaption.textContent = photo.caption;
+        polaroid.style.setProperty("--tilt", `${TILTS[tiltIndex++ % TILTS.length]}deg`);
+        placePolaroid();
+        polaroid.classList.add("is-shown");
+      });
+    };
+
+    const pickNext = () => {
+      const take = () => {
+        const index = queue.findIndex((photo) => photo !== active && facing(photo));
+        return index === -1 ? null : (queue.splice(index, 1)[0] ?? null);
+      };
+      const found = take();
+      if (found) return found;
+      queue = shuffle(photos);
+      return take();
+    };
+
+    const cycle = (now: number) => {
+      if (pinned || reduceMotion || photos.length === 0) return;
+      if (active && !facing(active)) {
+        reveal(null);
+        nextSwap = now + 700;
+        return;
       }
+      if (now < nextSwap) return;
+      nextSwap = now + POLAROID_INTERVAL;
+      reveal(pickNext());
     };
 
     const step = () => {
@@ -265,7 +333,8 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
         step();
         pulse += 0.06;
         globe.update({ phi: view.phi, theta: view.theta, markers: buildMarkers() });
-        placePolaroids();
+        cycle(performance.now());
+        placePolaroid();
       }
       requestAnimationFrame(tick);
     };
@@ -298,6 +367,8 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
       const flag = event.currentTarget;
       if (!(flag instanceof HTMLElement)) return;
       target = viewFor(JSON.parse(flag.dataset.coords ?? "[0,0]") as LatLng);
+      pinned = true;
+      reveal(photos.find((photo) => photo.code === flag.dataset.code) ?? null);
       if (reduceMotion) {
         view = { ...target };
         target = null;
@@ -307,6 +378,8 @@ const countryLabel = countries.length === 1 ? "country" : "countries";
     const returnHome = () => {
       target = { ...home };
       sway = 0;
+      pinned = false;
+      nextSwap = performance.now() + POLAROID_INTERVAL / 2;
       if (reduceMotion) {
         view = { ...home };
         target = null;

@@ -9,6 +9,8 @@ import "../styles/global.css";
 const calendar = await fetchContributionCalendar(site.githubUsername);
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 const year = new Date().getFullYear();
+const captionGlyphs = [...new Set(site.countries.map((country) => country.caption ?? "").join(""))].join("");
+const captionFont = `https://fonts.googleapis.com/css2?family=Caveat:wght@500&display=swap&text=${encodeURIComponent(captionGlyphs)}`;
 ---
 
 <html lang="en">
@@ -28,6 +30,7 @@ const year = new Date().getFullYear();
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+    <link href={captionFont} rel="stylesheet" />
     <meta property="og:title" content={`${site.name} — ${site.title}`} />
     <meta property="og:description" content={site.tagline} />
     <meta property="og:type" content="website" />
