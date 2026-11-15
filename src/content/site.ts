@@ -42,7 +42,7 @@ const countries: readonly Country[] = [
   { name: "Croatia", code: "hr", coords: [45.815, 15.9819], photo: "/travel/hr.jpg", caption: "Dubrovnik" },
   { name: "Gibraltar", code: "gi", coords: [36.1408, -5.3536], photo: "/travel/gi.jpg", caption: "Gibraltar" },
   { name: "Monaco", code: "mc", coords: [43.7384, 7.4246], photo: "/travel/mc.jpg", caption: "Monte Carlo" },
-  { name: "Ukraine", code: "ua", coords: [50.4501, 30.5234] },
+  { name: "Ukraine", code: "ua", coords: [50.4501, 30.5234], photo: "/travel/ua.jpg", caption: "Kyiv" },
   { name: "Vatican City", code: "va", coords: [41.9029, 12.4534], photo: "/travel/va.jpg", caption: "Vatican" },
   { name: "Türkiye", code: "tr", coords: [41.0082, 28.9784], photo: "/travel/tr.jpg", caption: "Istanbul" },
   { name: "Greece", code: "gr", coords: [36.8933, 27.2877], photo: "/travel/gr.jpg", caption: "Kos" },

@@ -279,6 +279,70 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   outline: none;
 }
 
+.socials a[data-social="GitHub"]:hover,
+.socials a[data-social="GitHub"]:focus-visible {
+  color: #8250df;
+}
+
+.socials a[data-social="LinkedIn"]:hover,
+.socials a[data-social="LinkedIn"]:focus-visible {
+  color: #0a66c2;
+}
+
+.socials a[data-social="X"]:hover,
+.socials a[data-social="X"]:focus-visible {
+  color: #1d9bf0;
+}
+
+.socials a[data-social="Instagram"]:hover,
+.socials a[data-social="Instagram"]:focus-visible {
+  color: #e1306c;
+}
+
+.socials a[data-social="Email"]:hover,
+.socials a[data-social="Email"]:focus-visible {
+  color: #16a34a;
+}
+
+:root[data-theme="dark"] .socials a[data-social="GitHub"]:hover,
+:root[data-theme="dark"] .socials a[data-social="GitHub"]:focus-visible {
+  color: #a78bfa;
+}
+
+:root[data-theme="dark"] .socials a[data-social="LinkedIn"]:hover,
+:root[data-theme="dark"] .socials a[data-social="LinkedIn"]:focus-visible {
+  color: #5aa9f5;
+}
+
+.socials a[data-copy] {
+  position: relative;
+}
+
+.socials a[data-copy]::after {
+  content: "Email copied";
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 50%;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.socials a[data-copy].is-copied::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .socials a:hover svg,
 .socials a:focus-visible svg {
   transform: scale(1.08);

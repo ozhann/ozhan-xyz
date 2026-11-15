@@ -104,6 +104,8 @@ const captionFont = `https://fonts.googleapis.com/css2?family=Caveat:wght@500&di
                   href={social.href}
                   target={social.href.startsWith("mailto:") ? undefined : "_blank"}
                   rel={social.href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
+                  data-social={social.label}
+                  data-copy={social.href.startsWith("mailto:") ? social.href.slice(7) : undefined}
                   title={
                     social.followers !== null
                       ? `${social.followers.toLocaleString("en")} followers on ${social.label}`
@@ -255,6 +257,15 @@ const captionFont = `https://fonts.googleapis.com/css2?family=Caveat:wght@500&di
         if (localStorage.getItem("theme")) return;
         applyTheme(event.matches ? "dark" : "light", false);
       });
+
+      for (const link of document.querySelectorAll<HTMLAnchorElement>("a[data-copy]")) {
+        link.addEventListener("click", () => {
+          void navigator.clipboard?.writeText(link.dataset.copy ?? "").then(() => {
+            link.classList.add("is-copied");
+            setTimeout(() => link.classList.remove("is-copied"), 1800);
+          });
+        });
+      }
 
       const canvas = document.querySelector(".pixel-field");
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
