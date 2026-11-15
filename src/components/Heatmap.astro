@@ -1,6 +1,7 @@
 ---
 import type { ContributionCalendar } from "../lib/github";
 import { monthLabels } from "../lib/github";
+import SocialIcon from "./SocialIcon.astro";
 
 interface Props {
   calendar: ContributionCalendar;
@@ -9,10 +10,37 @@ interface Props {
 
 const { calendar, username } = Astro.props;
 const weekCount = Math.max(calendar.weeks.length, 1);
-const labels = monthLabels(calendar.weeks, 4);
+const labels = monthLabels(calendar.weeks, 1).map((item) => item.label);
+const today = new Date().toISOString().slice(0, 10);
+
+const describe = (count: number, date: string) => {
+  const day = new Date(`${date}T00:00:00Z`).toLocaleDateString("en", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  const amount = count === 0 ? "No" : count.toLocaleString();
+  return `${amount} contribution${count === 1 ? "" : "s"} on ${day}`;
+};
 ---
 
 <div class="heatmap-wrap">
+  <div class="heatmap-head">
+    <a
+      class="heatmap-user"
+      href={`https://github.com/${username}`}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <SocialIcon label="GitHub" />
+      {username}
+    </a>
+    <p class="heatmap-total">
+      <strong>{calendar.total.toLocaleString()}</strong> contributions in the last year
+    </p>
+  </div>
+
   <div
     class="heatmap"
     role="img"
@@ -20,19 +48,7 @@ const labels = monthLabels(calendar.weeks, 4);
     style={`--weeks: ${weekCount}`}
   >
     <div class="heatmap-months" aria-hidden="true">
-      {
-        labels.map((item) => {
-          const nearEnd = item.index > weekCount - 5;
-          return (
-            <span
-              class:list={{ "is-end": nearEnd }}
-              style={`left: ${(item.index / weekCount) * 100}%`}
-            >
-              {item.label}
-            </span>
-          );
-        })
-      }
+      {labels.map((label) => <span>{label}</span>)}
     </div>
     <div class="heatmap-grid">
       {
@@ -41,15 +57,59 @@ const labels = monthLabels(calendar.weeks, 4);
             <div
               class="heat-cell"
               data-level={day.level}
-              title={`${day.count} contribution${day.count === 1 ? "" : "s"} on ${day.date}`}
+              data-tip={describe(day.count, day.date)}
+              data-today={day.date === today ? "" : undefined}
               style={`animation-delay: ${Math.min((weekIndex * 7 + dayIndex) * 1.5, 400)}ms`}
             />
           )),
         )
       }
     </div>
+    <div class="heatmap-tip" role="status" aria-live="polite"></div>
   </div>
-  <p class="heatmap-meta">
-    {calendar.total.toLocaleString()} contributions on GitHub in the last year
-  </p>
+
+  <div class="heatmap-legend" aria-hidden="true">
+    <span>Less</span>
+    {[0, 1, 2, 3, 4].map((level) => <i class="heat-cell" data-level={level} />)}
+    <span>More</span>
+  </div>
 </div>
+
+<script>
+  const heatmap = document.querySelector<HTMLElement>(".heatmap");
+  const tip = heatmap?.querySelector<HTMLElement>(".heatmap-tip");
+
+  if (heatmap && tip) {
+    let active: HTMLElement | null = null;
+
+    const show = (cell: HTMLElement) => {
+      if (active === cell) return;
+      active?.classList.remove("is-active");
+      active = cell;
+      cell.classList.add("is-active");
+      tip.textContent = cell.dataset.tip ?? "";
+
+      const box = heatmap.getBoundingClientRect();
+      const rect = cell.getBoundingClientRect();
+      const center = rect.left - box.left + rect.width / 2;
+      const half = tip.offsetWidth / 2;
+      const left = Math.max(half, Math.min(box.width - half, center));
+
+      tip.style.left = `${left}px`;
+      tip.style.top = `${rect.top - box.top}px`;
+      tip.classList.add("is-visible");
+    };
+
+    const hide = () => {
+      active?.classList.remove("is-active");
+      active = null;
+      tip.classList.remove("is-visible");
+    };
+
+    heatmap.addEventListener("pointerover", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.classList.contains("heat-cell")) show(target);
+    });
+    heatmap.addEventListener("pointerleave", hide);
+  }
+</script>

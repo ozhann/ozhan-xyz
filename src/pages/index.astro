@@ -3,9 +3,11 @@ import { site } from "../content/site";
 import { fetchContributionCalendar } from "../lib/github";
 import Heatmap from "../components/Heatmap.astro";
 import SocialIcon from "../components/SocialIcon.astro";
+import TravelGlobe from "../components/TravelGlobe.astro";
 import "../styles/global.css";
 
 const calendar = await fetchContributionCalendar(site.githubUsername);
+const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 const year = new Date().getFullYear();
 ---
 
@@ -99,11 +101,22 @@ const year = new Date().getFullYear();
                   href={social.href}
                   target={social.href.startsWith("mailto:") ? undefined : "_blank"}
                   rel={social.href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
-                  aria-label={social.label}
-                  title={social.label}
+                  title={
+                    social.followers !== null
+                      ? `${social.followers.toLocaleString("en")} followers on ${social.label}`
+                      : social.label
+                  }
                 >
                   <SocialIcon label={social.label} />
-                  <span class="social-label">{social.label}</span>
+                  {social.followers !== null && (
+                    <span class="social-count" aria-hidden="true">
+                      {compact.format(social.followers)}
+                    </span>
+                  )}
+                  <span class="social-label">
+                    {social.label}
+                    {social.followers !== null && `, ${social.followers.toLocaleString("en")} followers`}
+                  </span>
                 </a>
               </li>
             ))
@@ -112,24 +125,32 @@ const year = new Date().getFullYear();
       </section>
 
       <section class="section" aria-labelledby="work-heading">
-        <h2 id="work-heading" class="section-label">Selected work</h2>
+        <h2 id="work-heading" class="section-label">Work history</h2>
         <ul class="project-list">
           {
             site.projects.map((project) => (
               <li>
                 {project.href ? (
                   <a href={project.href} target="_blank" rel="noopener noreferrer">
-                    <span class="project-name">{project.name}</span>
-                    <span class="project-meta">
-                      {project.role} · {project.industry}
+                    <span class="project-main">
+                      <span class="project-name-row">
+                        <span class="project-name">{project.name}</span>
+                        <span class="project-industry">{project.industry}</span>
+                      </span>
+                      <span class="project-role">{project.role}</span>
                     </span>
+                    <span class="project-years">{project.years}</span>
                   </a>
                 ) : (
                   <div class="project-static">
-                    <span class="project-name">{project.name}</span>
-                    <span class="project-meta">
-                      {project.role} · {project.industry}
+                    <span class="project-main">
+                      <span class="project-name-row">
+                        <span class="project-name">{project.name}</span>
+                        <span class="project-industry">{project.industry}</span>
+                      </span>
+                      <span class="project-role">{project.role}</span>
                     </span>
+                    <span class="project-years">{project.years}</span>
                   </div>
                 )}
               </li>
@@ -141,6 +162,11 @@ const year = new Date().getFullYear();
       <section class="section" aria-labelledby="activity-heading">
         <h2 id="activity-heading" class="section-label">Activity</h2>
         <Heatmap calendar={calendar} username={site.githubUsername} />
+      </section>
+
+      <section class="section" aria-labelledby="travel-heading">
+        <h2 id="travel-heading" class="section-label">Travel</h2>
+        <TravelGlobe countries={site.countries} current={site.currentCities} />
       </section>
 
       <footer class="footer">

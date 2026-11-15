@@ -1,0 +1,347 @@
+---
+import type { Country, CurrentCity } from "../content/site";
+
+interface Props {
+  countries: readonly Country[];
+  current: readonly CurrentCity[];
+}
+
+const { countries, current } = Astro.props;
+
+const flagSources = import.meta.glob<string>("/node_modules/circle-flags/flags/*.svg", {
+  query: "?raw",
+  import: "default",
+});
+
+const flagFor = async (code: string) => {
+  const load = flagSources[`/node_modules/circle-flags/flags/${code}.svg`];
+  const svg = load ? await load() : "";
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+};
+
+const flags = await Promise.all(
+  [...countries]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(async (country) => ({ ...country, src: await flagFor(country.code) })),
+);
+
+const nowCities = await Promise.all(
+  current.map(async (place) => ({ ...place, src: await flagFor(place.code) })),
+);
+
+const currentCodes = new Set(current.map((place) => place.code));
+
+const markers = [
+  ...countries
+    .filter((country) => !currentCodes.has(country.code))
+    .map((country) => ({ location: country.coords, current: false })),
+  ...current.map((place) => ({ location: place.coords, current: true })),
+];
+
+const photos = countries
+  .filter((country) => country.photo)
+  .map((country, index) => ({
+    src: country.photo ?? "",
+    caption: country.caption ?? country.name,
+    coords: country.coords,
+    tilt: [-6, 4, -3, 7, -5, 3][index % 6],
+  }));
+
+const home = current[0]?.coords ?? [0, 0];
+const countryLabel = countries.length === 1 ? "country" : "countries";
+---
+
+<div class="travel">
+  <div class="travel-stage">
+    <canvas
+      class="globe-canvas"
+      data-markers={JSON.stringify(markers)}
+      data-home={JSON.stringify(home)}
+      aria-label={`Globe marking ${countries.length} ${countryLabel} visited`}
+      role="img"
+    ></canvas>
+    <div class="polaroids" aria-hidden="true">
+      {
+        photos.map((photo) => (
+          <figure
+            class="polaroid"
+            data-coords={JSON.stringify(photo.coords)}
+            style={`--tilt: ${photo.tilt}deg`}
+          >
+            <div class="polaroid-card">
+              <img src={photo.src} alt="" width="72" height="72" loading="lazy" />
+              <figcaption>{photo.caption}</figcaption>
+            </div>
+          </figure>
+        ))
+      }
+    </div>
+  </div>
+
+  <div class="travel-info">
+    <div class="travel-now-block">
+      <p class="travel-now-label">
+        <span class="online-dot" aria-hidden="true"></span>
+        Now in
+      </p>
+      <p class="travel-now">
+        {
+          nowCities.map((place) => (
+            <span class="travel-city">
+              <img src={place.src} alt="" width="18" height="18" />
+              {place.city}
+            </span>
+          ))
+        }
+      </p>
+    </div>
+    <p class="travel-count">
+      <strong>{countries.length}</strong>{` ${countryLabel} visited`}
+    </p>
+  </div>
+
+  <ul class="travel-flags" aria-label="Countries visited">
+    {
+      flags.map((flag) => (
+        <li>
+          <button
+            type="button"
+            class="travel-flag"
+            data-coords={JSON.stringify(flag.coords)}
+            title={flag.name}
+            aria-label={`Show ${flag.name} on the globe`}
+          >
+            <img src={flag.src} alt="" width="22" height="22" loading="lazy" />
+          </button>
+        </li>
+      ))
+    }
+  </ul>
+</div>
+
+<script>
+  import createGlobe from "cobe";
+
+  type LatLng = [number, number];
+  type MarkerData = { location: LatLng; current: boolean };
+  type Rgb = [number, number, number];
+  type View = { phi: number; theta: number };
+
+  const RADIUS = 0.8;
+  const ELEVATION = 0.01;
+
+  const canvas = document.querySelector<HTMLCanvasElement>(".globe-canvas");
+  const stage = document.querySelector<HTMLElement>(".travel-stage");
+
+  const toRgb = (value: string, fallback: Rgb): Rgb => {
+    const parts = value.split(",").map((part) => Number.parseFloat(part));
+    return parts.length === 3 && parts.every(Number.isFinite) ? (parts as Rgb) : fallback;
+  };
+
+  const readPalette = () => {
+    const styles = getComputedStyle(document.documentElement);
+    const read = (name: string, fallback: Rgb) => toRgb(styles.getPropertyValue(name), fallback);
+    const isDark = document.documentElement.dataset.theme === "dark";
+    return {
+      dark: isDark ? 1 : 0,
+      mapBrightness: isDark ? 5 : 8,
+      baseColor: read("--globe-base", [1, 1, 1]),
+      glowColor: read("--globe-glow", [0.95, 0.96, 0.97]),
+      markerColor: read("--globe-marker", [0.12, 0.23, 0.37]),
+      currentColor: read("--globe-current", [0.13, 0.63, 0.42]),
+    };
+  };
+
+  const viewFor = ([lat, lng]: LatLng): View => ({
+    phi: Math.PI - ((lng * Math.PI) / 180 - Math.PI / 2),
+    theta: Math.max(-0.6, Math.min(0.8, ((lat * Math.PI) / 180) * 0.85)),
+  });
+
+  const toVector = ([lat, lng]: LatLng) => {
+    const latRad = (lat * Math.PI) / 180;
+    const lngRad = (lng * Math.PI) / 180 - Math.PI;
+    return [
+      -Math.cos(latRad) * Math.cos(lngRad),
+      Math.sin(latRad),
+      Math.cos(latRad) * Math.sin(lngRad),
+    ] as const;
+  };
+
+  const project = (vector: readonly [number, number, number], view: View) => {
+    const [x, y, z] = vector;
+    const sinPhi = Math.sin(view.phi);
+    const cosPhi = Math.cos(view.phi);
+    const sinTheta = Math.sin(view.theta);
+    const cosTheta = Math.cos(view.theta);
+    const scale = RADIUS + ELEVATION;
+    return {
+      u: ((cosPhi * x + sinPhi * z) * scale + 1) / 2,
+      v: (-(sinPhi * sinTheta * x + cosTheta * y - cosPhi * sinTheta * z) * scale + 1) / 2,
+      depth: -sinPhi * cosTheta * x + sinTheta * y + cosPhi * cosTheta * z,
+    };
+  };
+
+  const shortestTurn = (from: number, to: number) => {
+    const turn = (to - from) % (Math.PI * 2);
+    return turn > Math.PI ? turn - Math.PI * 2 : turn < -Math.PI ? turn + Math.PI * 2 : turn;
+  };
+
+  if (canvas && stage) {
+    const markerData = JSON.parse(canvas.dataset.markers ?? "[]") as MarkerData[];
+    const home = viewFor(JSON.parse(canvas.dataset.home ?? "[0,0]") as LatLng);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const markerVectors = markerData.map((marker) => toVector(marker.location));
+
+    const polaroids = [...stage.querySelectorAll<HTMLElement>(".polaroid")].map((element) => ({
+      element,
+      vector: toVector(JSON.parse(element.dataset.coords ?? "[0,0]") as LatLng),
+    }));
+
+    let palette = readPalette();
+    let view: View = { ...home };
+    let target: View | null = null;
+    let sway = 0;
+    let pulse = 0;
+    let dragStart: { x: number; y: number; view: View } | null = null;
+    let visible = true;
+    let size = canvas.offsetWidth;
+
+    const buildMarkers = () =>
+      markerData
+        .map((marker, index) => ({ marker, depth: project(markerVectors[index]!, view).depth }))
+        .filter(({ depth }) => depth > 0.12)
+        .map(({ marker }) => ({
+          location: marker.location,
+          size: marker.current ? 0.045 + Math.sin(pulse) * 0.012 : 0.03,
+          color: marker.current ? palette.currentColor : palette.markerColor,
+        }));
+
+    const globe = createGlobe(canvas, {
+      devicePixelRatio: dpr,
+      width: size,
+      height: size,
+      phi: view.phi,
+      theta: view.theta,
+      dark: palette.dark,
+      diffuse: 1.2,
+      mapSamples: 20000,
+      mapBrightness: palette.mapBrightness,
+      baseColor: palette.baseColor,
+      markerColor: palette.markerColor,
+      glowColor: palette.glowColor,
+      markers: buildMarkers(),
+      markerElevation: ELEVATION,
+    });
+
+    const placePolaroids = () => {
+      const stageBox = stage.getBoundingClientRect();
+      const canvasBox = canvas.getBoundingClientRect();
+      for (const { element, vector } of polaroids) {
+        const point = project(vector, view);
+        const left = canvasBox.left - stageBox.left + point.u * canvasBox.width;
+        const top = canvasBox.top - stageBox.top + point.v * canvasBox.height;
+        element.style.transform = `translate(${left}px, ${top}px)`;
+        element.classList.toggle("is-shown", point.depth > 0.35 && top > 40);
+      }
+    };
+
+    const step = () => {
+      if (dragStart || reduceMotion) return;
+      if (target) {
+        const phiTurn = shortestTurn(view.phi, target.phi);
+        const thetaTurn = target.theta - view.theta;
+        view.phi += phiTurn * 0.08;
+        view.theta += thetaTurn * 0.08;
+        if (Math.abs(phiTurn) < 0.002 && Math.abs(thetaTurn) < 0.002) target = null;
+        return;
+      }
+      sway += 0.005;
+      view.phi += Math.cos(sway) * 0.0035;
+    };
+
+    const tick = () => {
+      if (visible) {
+        step();
+        pulse += 0.06;
+        globe.update({ phi: view.phi, theta: view.theta, markers: buildMarkers() });
+        placePolaroids();
+      }
+      requestAnimationFrame(tick);
+    };
+
+    canvas.addEventListener("pointerdown", (event) => {
+      dragStart = { x: event.clientX, y: event.clientY, view: { ...view } };
+      target = null;
+      canvas.setPointerCapture(event.pointerId);
+      canvas.classList.add("is-dragging");
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      if (!dragStart) return;
+      view.phi = dragStart.view.phi + (event.clientX - dragStart.x) / 160;
+      view.theta = Math.max(
+        -0.9,
+        Math.min(0.9, dragStart.view.theta + (event.clientY - dragStart.y) / 220),
+      );
+    });
+
+    const endDrag = () => {
+      dragStart = null;
+      sway = 0;
+      canvas.classList.remove("is-dragging");
+    };
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+
+    const focusFlag = (event: Event) => {
+      const flag = event.currentTarget;
+      if (!(flag instanceof HTMLElement)) return;
+      target = viewFor(JSON.parse(flag.dataset.coords ?? "[0,0]") as LatLng);
+      if (reduceMotion) {
+        view = { ...target };
+        target = null;
+      }
+    };
+
+    const returnHome = () => {
+      target = { ...home };
+      sway = 0;
+      if (reduceMotion) {
+        view = { ...home };
+        target = null;
+      }
+    };
+
+    for (const flag of document.querySelectorAll<HTMLElement>(".travel-flag")) {
+      flag.addEventListener("pointerenter", focusFlag);
+      flag.addEventListener("focus", focusFlag);
+      flag.addEventListener("click", focusFlag);
+      flag.addEventListener("pointerleave", returnHome);
+      flag.addEventListener("blur", returnHome);
+    }
+
+    new ResizeObserver(() => {
+      size = canvas.offsetWidth;
+      globe.update({ width: size, height: size });
+    }).observe(canvas);
+
+    new IntersectionObserver(([entry]) => {
+      visible = entry?.isIntersecting ?? true;
+    }).observe(stage);
+
+    new MutationObserver(() => {
+      palette = readPalette();
+      globe.update({
+        dark: palette.dark,
+        mapBrightness: palette.mapBrightness,
+        baseColor: palette.baseColor,
+        glowColor: palette.glowColor,
+        markerColor: palette.markerColor,
+      });
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    requestAnimationFrame(() => canvas.classList.add("is-ready"));
+    tick();
+  }
+</script>
